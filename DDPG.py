@@ -42,11 +42,11 @@ class QNetwork(nn.Module):
         return x
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, num_inputs):
+    def __init__(self, state_dim, action_dim):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(num_inputs, 256)
         self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 1)
+        self.fc3 = nn.Linear(128, action_dim)
 
     def forward(self, state):
         x = F.relu(self.fc1(state))
@@ -57,8 +57,8 @@ class PolicyNetwork(nn.Module):
 
 class DDPG(object):
     def __init__(self, state_dim, action_dim):
-        self.q_net = QNetwork(state_dim, action_dim).to(device)
-        self.p_net = PolicyNetwork(state_dim).to(device)
+        self.q_net = QNetwork(state_dim, action_dim)
+        self.p_net = PolicyNetwork(state_dim, action_dim)
         self.q_criterion = nn.MSELoss()
         self.q_optimizer = optim.Adam(self.q_net.parameters(), lr=1e-3)
         self.p_optimizer = optim.Adam(self.p_net.parameters(), lr=3e-4)
@@ -77,11 +77,11 @@ class DDPG(object):
         next_state = batch[3]
         done = batch[4]
 
-        state = torch.from_numpy(state).float().to(device)
-        action = torch.from_numpy(action).float().view(-1, 1).to(device)
-        next_state = torch.from_numpy(next_state).float().to(device)
+        state = torch.from_numpy(state).float()
+        action = torch.from_numpy(action).float().view(-1, 1)
+        next_state = torch.from_numpy(next_state).float()
         next_action = self.p_net(next_state)
-        reward = torch.FloatTensor(reward).float().unsqueeze(1).to(device)
+        reward = torch.FloatTensor(reward).float().unsqueeze(1)
 
 
         q = self.q_net(state, action)
@@ -99,8 +99,6 @@ class DDPG(object):
         self.p_optimizer.step()
 
 if __name__ == '__main__':
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
     env = gym.make("Pendulum-v0")
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
