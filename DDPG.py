@@ -79,7 +79,7 @@ class DDPG(object):
         done = batch[4]
 
         state = torch.from_numpy(state).float()
-        action = torch.from_numpy(action).float().view(-1, 1)
+        action = torch.from_numpy(action).float().view(-1, self.action_dim)
         next_state = torch.from_numpy(next_state).float()
         next_action = self.p_net(next_state)
         reward = torch.FloatTensor(reward).float().unsqueeze(1)
