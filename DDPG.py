@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-
 class ReplayBuffer:
     def __init__(self, capacity):
         self.capacity = capacity
@@ -44,7 +43,7 @@ class QNetwork(nn.Module):
 class PolicyNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(num_inputs, 256)
+        self.fc1 = nn.Linear(state_dim, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, action_dim)
 
@@ -57,6 +56,8 @@ class PolicyNetwork(nn.Module):
 
 class DDPG(object):
     def __init__(self, state_dim, action_dim):
+        self.state_dim = state_dim
+        self.action_dim = action_dim
         self.q_net = QNetwork(state_dim, action_dim)
         self.p_net = PolicyNetwork(state_dim, action_dim)
         self.q_criterion = nn.MSELoss()
@@ -66,9 +67,9 @@ class DDPG(object):
 
     def get_action(self, state, epsilon):
         a = self.p_net(torch.from_numpy(state).float())
-        a = a + epsilon * torch.randn(1, 1)
+        a = a + epsilon * torch.randn(self.action_dim)
         a = torch.clamp(a, min=-2, max=2)
-        return a[0, 0].item()
+        return a.detach().numpy()
 
     def train(self, batch):
         state = batch[0]    # array [64 1 2]
@@ -115,7 +116,6 @@ if __name__ == '__main__':
             # print("MC= ", MC_iter)
             env.render()
             action1 = agent.get_action(state, 1.0-(MC_iter/max_MC_iter))
-            action1 = np.array([action1])
             next_state, reward, done, info = env.step(action1)
             acc_reward = acc_reward + reward
             replay_buffer.push(state, action1, reward, next_state, done)
