@@ -115,7 +115,7 @@ if __name__ == '__main__':
         for MC_iter in range(max_MC_iter):
             # print("MC= ", MC_iter)
             env.render()
-            action1 = agent.get_action(state, 1.0-(MC_iter/max_MC_iter))
+            action1 = agent.get_action(state, 1.0-(epi/max_epi_iter))
             next_state, reward, done, info = env.step(action1)
             acc_reward = acc_reward + reward
             replay_buffer.push(state, action1, reward, next_state, done)
