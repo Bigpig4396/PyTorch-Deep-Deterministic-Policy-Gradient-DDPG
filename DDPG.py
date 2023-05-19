@@ -58,15 +58,25 @@ class DDPG(object):
     def __init__(self, state_dim, action_dim):
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.q_net = QNetwork(state_dim, action_dim)
+        self.q_1_net = QNetwork(state_dim, action_dim)
+        self.q_2_net = QNetwork(state_dim, action_dim)
+        self.target_q_1_net = QNetwork(state_dim, action_dim)
+        self.target_q_2_net = QNetwork(state_dim, action_dim)
+        for target_param, param in zip(self.target_q_1_net.parameters(), self.q_1_net.parameters()):
+            target_param.data.copy_(param.data)
+        for target_param, param in zip(self.target_q_2_net.parameters(), self.q_2_net.parameters()):
+            target_param.data.copy_(param.data)
+        self.soft_tau = 1e-2
+
         self.p_net = PolicyNetwork(state_dim, action_dim)
         self.q_criterion = nn.MSELoss()
-        self.q_optimizer = optim.Adam(self.q_net.parameters(), lr=1e-3)
+        self.q_1_optimizer = optim.Adam(self.q_1_net.parameters(), lr=1e-3)
+        self.q_2_optimizer = optim.Adam(self.q_2_net.parameters(), lr=1e-3)
         self.p_optimizer = optim.Adam(self.p_net.parameters(), lr=3e-4)
-        self.gamma = 0.9
+        self.gamma = 0.99
 
     def get_action(self, state, epsilon):
-        a = self.p_net(torch.from_numpy(state).float())
+        a = self.p_net.forward(torch.from_numpy(state).float())
         a = a + epsilon * torch.randn(self.action_dim)
         a = torch.clamp(a, min=-2, max=2)
         return a.detach().numpy()
@@ -81,23 +91,54 @@ class DDPG(object):
         state = torch.from_numpy(state).float()
         action = torch.from_numpy(action).float().view(-1, self.action_dim)
         next_state = torch.from_numpy(next_state).float()
-        next_action = self.p_net(next_state)
+        next_action = self.p_net.forward(next_state)
         reward = torch.FloatTensor(reward).float().unsqueeze(1)
 
+        q1 = self.q_1_net.forward(state, action)
+        q2 = self.q_2_net.forward(state, action)
+        # q_min = torch.min(q1, q2)
+        next_q1 = self.target_q_1_net.forward(next_state, next_action)
+        next_q2 = self.target_q_2_net.forward(next_state, next_action)
+        next_q_min = torch.min(next_q1, next_q2)
+        est_q = reward + self.gamma * next_q_min
 
-        q = self.q_net(state, action)
-        next_q = self.q_net(next_state, next_action)
-        est_q = reward + self.gamma * next_q
-
-        q_loss = self.q_criterion(q, est_q.detach())
-        self.q_optimizer.zero_grad()
+        q_loss = self.q_criterion(q1, est_q.detach())
+        self.q_1_optimizer.zero_grad()
         q_loss.backward()
-        self.q_optimizer.step()
+        self.q_1_optimizer.step()
+        q_loss = self.q_criterion(q2, est_q.detach())
+        self.q_2_optimizer.zero_grad()
+        q_loss.backward()
+        self.q_2_optimizer.step()
 
-        p_loss = -self.q_net(state, self.p_net(state)).mean()
+        new_a = self.p_net.forward(state)
+        q1 = self.q_1_net.forward(state, new_a)
+        q2 = self.q_2_net.forward(state, new_a)
+        q_min = torch.min(q2, q1)
+        p_loss = -q_min.mean()
         self.p_optimizer.zero_grad()
         p_loss.backward()
         self.p_optimizer.step()
+
+        for target_param, param in zip(self.target_q_1_net.parameters(), self.q_1_net.parameters()):
+            target_param.data.copy_(target_param.data * (1.0 - self.soft_tau) + param.data * self.soft_tau)
+        for target_param, param in zip(self.target_q_2_net.parameters(), self.q_2_net.parameters()):
+            target_param.data.copy_(target_param.data * (1.0 - self.soft_tau) + param.data * self.soft_tau)
+
+    def load_model(self):
+        print('load model')
+        self.q_1_net = torch.load('DDPG_q_1_net.pkl')
+        self.q_2_net = torch.load('DDPG_q_2_net.pkl')
+        self.target_q_1_net = torch.load('DDPG_target_q_1_net.pkl')
+        self.target_q_2_net = torch.load('DDPG_target_q_2_net.pkl')
+        self.p_net = torch.load('DDPG_policy_net.pkl')
+
+    def save_model(self):
+        torch.save(self.q_1_net, 'DDPG_soft_q_net1.pkl')
+        torch.save(self.q_2_net, 'DDPG_soft_q_net2.pkl')
+        torch.save(self.target_q_1_net, 'DDPG_target_soft_q_net1.pkl')
+        torch.save(self.target_q_2_net, 'DDPG_target_soft_q_net2.pkl')
+        torch.save(self.p_net, 'DDPG_policy_net.pkl')
 
 if __name__ == '__main__':
     env = gym.make("Pendulum-v0")
